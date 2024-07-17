@@ -3,10 +3,31 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace svg {
+using Color = std::string;
+
+enum class StrokeLineCap {
+    BUTT,
+    ROUND,
+    SQUARE,
+};
+
+enum class StrokeLineJoin {
+    ARCS,
+    BEVEL,
+    MITER,
+    MITER_CLIP,
+    ROUND,
+};
+// Объявив в заголовочном файле константу со спецификатором inline,
+// мы сделаем так, что она будет одной на все единицы трансляции,
+// которые подключают этот заголовок.
+// В противном случае каждая единица трансляции будет использовать свою копию этой константы
+inline const Color NoneColor{"none"};
 
 struct Point {
     Point() = default;
@@ -48,6 +69,113 @@ struct RenderContext {
     int indent = 0;
 };
 
+inline std::ostream &operator<<(std::ostream &out, StrokeLineCap stroke_line_cap) {
+    using namespace std::literals;
+    switch (stroke_line_cap)
+    {
+    case StrokeLineCap::BUTT:
+        out << "butt"sv;
+        break;
+    case StrokeLineCap::ROUND:
+        out << "round"sv;
+        break;
+    case StrokeLineCap::SQUARE:
+        out << "square"sv;
+        break;
+    default:
+        //shouldn't get here
+        break;
+    }
+    return out;
+}
+
+inline std::ostream &operator<<(std::ostream &out, StrokeLineJoin stroke_line_join) {
+    using namespace std::literals;
+    switch (stroke_line_join)
+    {
+        case StrokeLineJoin::ARCS:
+            out << "arcs"sv;
+            break;
+        case StrokeLineJoin::BEVEL:
+            out << "bevel"sv;
+            break;
+        case StrokeLineJoin::MITER:
+            out << "miter"sv;
+            break;
+        case StrokeLineJoin::MITER_CLIP:
+            out << "miter-clip"sv;
+            break;
+        case StrokeLineJoin::ROUND:
+            out << "round"sv;
+            break;    
+        default:
+            break;
+    }
+    return out;
+}
+
+template <typename Owner>
+class PathProps {
+public:
+    Owner& SetFillColor(Color color) {
+        fill_color_ = std::move(color);
+        return AsOwner();
+    }
+    Owner& SetStrokeColor(Color color) {
+        stroke_color_ = std::move(color);
+        return AsOwner();
+    }
+    Owner& SetStrokeWidth(double width) {
+        stroke_line_width_ = width;
+        return AsOwner();
+    }
+    Owner& SetStrokeLineCap(StrokeLineCap line_cap) {
+        stroke_line_cap_ = line_cap;
+        return AsOwner();
+    }
+    Owner& SetStrokeLineJoin(StrokeLineJoin line_join) {
+        stroke_line_join_ = line_join;
+        return AsOwner();
+    } 
+ 
+
+protected:
+    ~PathProps() = default;
+
+    // Метод RenderAttrs выводит в поток общие для всех путей атрибуты fill и stroke
+    void RenderAttrs(std::ostream& out) const {
+        using namespace std::literals;
+
+        if (fill_color_) {
+            out << "fill=\""sv << *fill_color_ << "\" "sv;
+        }
+        if (stroke_color_) {
+            out << "stroke=\""sv << *stroke_color_ << "\" "sv;
+        }
+        if (stroke_line_width_) {
+            out << "stroke-width=\""sv <<  stroke_line_width_.value() << "\" "sv;
+        }
+        if (stroke_line_cap_) {
+            out << "stroke-linecap=\""sv << stroke_line_cap_.value() << "\" "sv;
+        }
+        if (stroke_line_join_) {
+            out << "stroke-linejoin=\""sv << stroke_line_join_.value() << "\" "sv;
+        }
+    }
+
+private:
+    Owner& AsOwner() {
+        // static_cast безопасно преобразует *this к Owner&,
+        // если класс Owner — наследник PathProps
+        return static_cast<Owner&>(*this);
+    }
+
+    std::optional<Color> fill_color_;
+    std::optional<Color> stroke_color_;
+    std::optional<StrokeLineCap> stroke_line_cap_;
+    std::optional<double> stroke_line_width_;
+    std::optional<StrokeLineJoin> stroke_line_join_;
+};
 /*
  * Абстрактный базовый класс Object служит для унифицированного хранения
  * конкретных тегов SVG-документа
@@ -67,7 +195,7 @@ private:
  * Класс Circle моделирует элемент <circle> для отображения круга
  * https://developer.mozilla.org/en-US/docs/Web/SVG/Element/circle
  */
-class Circle final : public Object {
+class Circle final : public Object, public PathProps<Circle> {
 public:
     Circle& SetCenter(Point center);
     Circle& SetRadius(double radius);
@@ -83,7 +211,7 @@ private:
  * Класс Polyline моделирует элемент <polyline> для отображения ломаных линий
  * https://developer.mozilla.org/en-US/docs/Web/SVG/Element/polyline
  */
-class Polyline final : public Object {
+class Polyline final : public Object, public PathProps<Polyline>{
 public:
     // Добавляет очередную вершину к ломаной линии
     Polyline& AddPoint(Point point);
@@ -97,7 +225,7 @@ private:
  * Класс Text моделирует элемент <text> для отображения текста
  * https://developer.mozilla.org/en-US/docs/Web/SVG/Element/text
  */
-class Text final : public Object {
+class Text final : public Object,public PathProps<Text>{
 public:
     // Задаёт координаты опорной точки (атрибуты x и y)
     Text& SetPosition(Point pos);
@@ -134,26 +262,35 @@ private:
 
 };
 
-class Document {
+class ObjectContainer{
 public:
-    /*
-     Метод Add добавляет в svg-документ любой объект-наследник svg::Object.
-     Пример использования:
-     Document doc;
-     doc.Add(Circle().SetCenter({20, 30}).SetRadius(15));
-    */
+    ~ObjectContainer() = default;
+    
     template <typename Obj>
     void Add(Obj obj) {
         objects_.emplace_back(std::make_unique<Obj>(std::move(obj)));
-    } 
+    }
+
+    virtual void AddPtr(std::unique_ptr<Object>&& obj) = 0;
+
+protected:
+    std::vector<std::unique_ptr<Object>> objects_;
+};
+
+class Drawable{
+public:
+    virtual ~Drawable() = default;
+    virtual void Draw(ObjectContainer& in_object) const = 0;
+};
+
+class Document : public ObjectContainer {
+public:
 
     // Добавляет в svg-документ объект-наследник svg::Object
-    void AddPtr(std::unique_ptr<Object>&& obj);
+    void AddPtr(std::unique_ptr<Object>&& obj) override;
 
     // Выводит в ostream svg-представление документа
     void Render(std::ostream& out) const;
-private:
-    std::vector<std::unique_ptr<Object>> objects_;
 };
 
 }  // namespace svg

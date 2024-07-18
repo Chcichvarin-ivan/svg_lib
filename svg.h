@@ -6,9 +6,43 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <variant>
 
 namespace svg {
-using Color = std::string;
+class Rgb {
+public:
+    Rgb() = default;
+    Rgb(uint8_t red, uint8_t green, uint8_t blue) : red(red)
+                                                  , green(green)
+                                                  , blue(blue){};
+    uint8_t red = 0;
+    uint8_t green = 0;
+    uint8_t blue = 0;
+};
+ 
+inline void PrintColor(std::ostream& out, Rgb& rgb);
+ 
+class Rgba {
+public:
+    Rgba() = default;
+    Rgba(uint8_t red, uint8_t green, uint8_t blue, double opacity) : red(red)
+                                                                   , green(green)
+                                                                   , blue(blue)
+                                                                   , opacity(opacity) {};
+    uint8_t red = 0;
+    uint8_t green = 0;
+    uint8_t blue = 0;
+    double opacity = 1.0;
+};  
+    
+inline void PrintColor(std::ostream& out, Rgba& rgba);
+ 
+using Color = std::variant<std::monostate, std::string, Rgb, Rgba>;
+inline const Color NoneColor{"none"};  
+    
+inline void PrintColor(std::ostream& out, std::monostate);
+inline void PrintColor(std::ostream& out, std::string& color);
+std::ostream& operator<<(std::ostream& out, const Color& color); 
 
 enum class StrokeLineCap {
     BUTT,
@@ -23,11 +57,6 @@ enum class StrokeLineJoin {
     MITER_CLIP,
     ROUND,
 };
-// Объявив в заголовочном файле константу со спецификатором inline,
-// мы сделаем так, что она будет одной на все единицы трансляции,
-// которые подключают этот заголовок.
-// В противном случае каждая единица трансляции будет использовать свою копию этой константы
-inline const Color NoneColor{"none"};
 
 struct Point {
     Point() = default;

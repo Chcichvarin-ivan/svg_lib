@@ -2,7 +2,7 @@
  * @Author: Ivan Chichvarin ichichvarin@humanplus.ru
  * @Date: 2024-07-01 23:28:23
  * @LastEditors: Ivan Chichvarin ichichvarin@humanplus.ru
- * @LastEditTime: 2024-07-14 23:31:52
+ * @LastEditTime: 2024-07-17 23:25:34
  * @FilePath: /svg_lib/svg.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -11,6 +11,36 @@
 namespace svg {
 
 using namespace std::literals;
+
+ 
+inline void PrintColor(std::ostream& out, Rgb& rgb) {
+    out << "rgb("sv << static_cast<short>(rgb.red) << ","sv
+                    << static_cast<short>(rgb.green) << ","sv 
+                    << static_cast<short>(rgb.blue) << ")"sv;
+}
+    
+inline void PrintColor(std::ostream& out, Rgba& rgba) {
+    out << "rgba("sv << static_cast<short>(rgba.red) << ","sv 
+                     << static_cast<short>(rgba.green) << ","sv 
+                     << static_cast<short>(rgba.blue) << ","sv 
+                     << (rgba.opacity) << ")"sv;
+}
+    
+inline void PrintColor(std::ostream& out, std::monostate) {
+    out << "none"sv;
+}
+ 
+inline void PrintColor(std::ostream& out, std::string& color) {
+    out << color;
+}
+    
+std::ostream& operator<<(std::ostream& out, const Color& color) {
+    std::visit([&out](auto value) {
+            PrintColor(out, value);
+    }, color);
+    
+    return out;
+} 
 
 void Object::Render(const RenderContext& context) const {
     context.RenderIndent();
